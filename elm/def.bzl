@@ -159,16 +159,25 @@ def _get_workspace_root(ctx):
         return "."
     return ctx.label.workspace_root
 
+def _paths_join(*args):
+    return "/".join([path for path in args if path])
+
 def _elm_library_impl(ctx):
-    source_directory = _get_workspace_root(ctx)
-    if ctx.attr.strip_import_prefix:
-        source_directory += "/" + ctx.attr.strip_import_prefix
+    workspace_root = _get_workspace_root(ctx)
+    source_directories_set = {}
+    for src in ctx.files.srcs:
+        source_directories_set.setdefault(_paths_join(
+            workspace_root,
+            src.root.path,  # non-empty for generated files.
+            ctx.attr.strip_import_prefix,
+        ))
+    source_directories = source_directories_set.keys()
     return [
         _create_elm_library_provider(
             ctx.attr.deps,
             [],
             [],
-            [source_directory],
+            source_directories,
             ctx.files.srcs,
         ),
     ]
@@ -272,7 +281,7 @@ def _elm_test_impl(ctx):
 
     return [DefaultInfo(
         executable = runner_file,
-        runfiles = ctx.runfiles(ctx.files._node + ctx.files._node_runfiles + ctx.files._run_test + [js_file]),
+        runfiles = ctx.runfiles(ctx.files._node + ctx.files._run_test + [js_file]),
     )]
 
 elm_test = rule(
@@ -295,10 +304,6 @@ elm_test = rule(
         "_node": attr.label(
             allow_single_file = True,
             default = Label("@nodejs//:node"),
-        ),
-        "_node_runfiles": attr.label(
-            allow_files = True,
-            default = Label("@nodejs//:node_runfiles"),
         ),
         "_node_test_runner": attr.label(
             providers = [_ElmLibrary],
